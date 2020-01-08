@@ -3,7 +3,7 @@
             [quil.core :as q]
             [quil.middleware :as m]))
 
-(def max-tries 1000)
+(def max-tries 10000)
 (def cmin 64)
 (def cmax 255)
 
@@ -12,16 +12,17 @@
   {:kdtree (k/build-tree [])
    :building true
    :smin 3
+   :slim 25
    :smax 25})
 
 (defn settings []
   (q/pixel-density 2)
   (q/smooth 16))
 
-(defn random-disc [{:keys [smax]}]
+(defn random-disc [{:keys [slim]}]
   {:x (q/random 0 (q/width))
    :y (q/random 0 (q/height))
-   :r (q/random smin smax)})
+   :r (q/random smin slim)})
 
 (defn sq-dist [x1 y1 x2 y2]
   (let [dx (- x1 x2)
@@ -35,7 +36,7 @@
       (< (sq-dist x y px py)
          (* (+ pr r) (+ pr r))))))
 
-(defn update-state [{:keys [kdtree building smax], :as state}]
+(defn update-state [{:keys [kdtree building smin slim smax], :as state}]
   (if-not building
     state
     (loop [i 0]
@@ -49,13 +50,16 @@
         (if (some (collision? disc) points)
           (if (< i max-tries)
             (recur (inc i))
-            (assoc state :building false))
-          (assoc state :kdtree (k/insert kdtree (with-meta
-                                                  [(:x disc) (:y disc)]
-                                                  {:r (:r disc)
-                                                   :color [(q/random cmin cmax)
-                                                           (q/random cmin cmax)
-                                                           (q/random cmin cmax)]}))))))))
+            (if (> slim smin)
+              (assoc state :slim (dec slim))
+              (assoc state :building false)))
+          (assoc state :kdtree (k/insert kdtree
+                                         (with-meta
+                                           [(:x disc) (:y disc)]
+                                           {:r (:r disc)
+                                            :color [(q/random cmin cmax)
+                                                    (q/random cmin cmax)
+                                                    (q/random cmin cmax)]}))))))))
 
 (defn draw-state [{:keys [kdtree]}]
   (q/background 24)
