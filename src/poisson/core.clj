@@ -13,13 +13,17 @@
    :color-generator :cosine
    :cmin 0.0
    :cmax 1.0
-   :a [0.5 0.5 0.5]
-   :b [0.5 0.5 0.5]
-   :c [1.0 1.0 0.5]
-   :d [0.8 0.9 0.3]
+   ;; :a [0.5 0.5 0.5]
+   ;; :b [0.5 0.5 0.5]
+   ;; :c [1.0 1.0 0.5]
+   ;; :d [0.8 0.9 0.3]
+   :a [0.578 0.188 0.448]
+   :b [0.127 0.288 0.373]
+   :c [1.918 0.677 0.529]
+   :d [-0.112 -0.533 0.568]
    :smin 2
-   :slim 52
-   :smax 52
+   :slim 202
+   :smax 202
    :sdec 5
    :offscreen false})
 
@@ -126,7 +130,7 @@
 (defn draw-state
   "Draw all discs"
   [{:keys [kdtree building slim offscreen]}]
-  (q/background 255)
+  (q/background 25)
   (q/no-stroke)
   (doseq [p (k/interval-search kdtree [[0 (q/width)] [0 (q/height)]])]
     (let [[x y] p
