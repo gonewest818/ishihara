@@ -10,10 +10,12 @@
 
 (defn setup []
   (q/frame-rate 30)
-  (q/background 24)
-  (q/smooth)
   {:kdtree (k/build-tree [])
    :building true})
+
+(defn settings []
+  (q/pixel-density 2)
+  (q/smooth 16))
 
 (defn random-disc []
   {:x (q/random 0 (q/width))
@@ -30,7 +32,7 @@
     (let [[px py] p
           pr (:r (meta p))]
       (< (sq-dist x y px py)
-         (+ (* r r) (* pr pr))))))
+         (* (+ pr r) (+ pr r))))))
 
 (defn update-state [{:keys [kdtree building]}]
   (if building
@@ -51,7 +53,8 @@
     {:kdtree kdtree :building false}))
 
 (defn draw-state [{:keys [kdtree building]}]
-  ;;(q/stroke-weight 5)
+  (q/background 24)
+  (q/stroke-weight 0)
   ;;(q/stroke (:color state) 128 255 60)
   (q/stroke 128 128 128)
   (q/fill 255 255 255)
@@ -66,7 +69,9 @@
   :title "packed circles"
   :size [500 500]
   :setup setup
+  :settings settings
   :update update-state
   :draw draw-state
+  :renderer :opengl
   :features [:keep-on-top]
   :middleware [m/fun-mode])
