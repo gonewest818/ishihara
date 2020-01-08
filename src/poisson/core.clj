@@ -3,21 +3,22 @@
             [quil.core :as q]
             [quil.middleware :as m]))
 
-(def smin 3)
-(def smax 25)
-(def smax-sq (* smax smax))
 (def max-tries 1000)
+(def cmin 64)
+(def cmax 255)
 
 (defn setup []
   (q/frame-rate 30)
   {:kdtree (k/build-tree [])
-   :building true})
+   :building true
+   :smin 3
+   :smax 25})
 
 (defn settings []
   (q/pixel-density 2)
   (q/smooth 16))
 
-(defn random-disc []
+(defn random-disc [{:keys [smax]}]
   {:x (q/random 0 (q/width))
    :y (q/random 0 (q/height))
    :r (q/random smin smax)})
@@ -34,10 +35,11 @@
       (< (sq-dist x y px py)
          (* (+ pr r) (+ pr r))))))
 
-(defn update-state [{:keys [kdtree building]}]
-  (if building
+(defn update-state [{:keys [kdtree building smax], :as state}]
+  (if-not building
+    state
     (loop [i 0]
-      (let [disc (random-disc)
+      (let [disc (random-disc state)
             radius (+ smax (:r disc))
             points (k/interval-search kdtree
                                       [[(- (:x disc) radius)
@@ -47,20 +49,22 @@
         (if (some (collision? disc) points)
           (if (< i max-tries)
             (recur (inc i))
-            {:kdtree kdtree :building false})
-          {:kdtree (k/insert kdtree (with-meta [(:x disc) (:y disc)] {:r (:r disc)}))
-           :building true})))
-    {:kdtree kdtree :building false}))
+            (assoc state :building false))
+          (assoc state :kdtree (k/insert kdtree (with-meta
+                                                  [(:x disc) (:y disc)]
+                                                  {:r (:r disc)
+                                                   :color [(q/random cmin cmax)
+                                                           (q/random cmin cmax)
+                                                           (q/random cmin cmax)]}))))))))
 
-(defn draw-state [{:keys [kdtree building]}]
+(defn draw-state [{:keys [kdtree]}]
   (q/background 24)
   (q/stroke-weight 0)
-  ;;(q/stroke (:color state) 128 255 60)
-  (q/stroke 128 128 128)
-  (q/fill 255 255 255)
   (doseq [p (k/interval-search kdtree [[0 (q/width)] [0 (q/height)]])]
     (let [[x y] p
-          r (:r (meta p))]
+          r (:r (meta p))
+          color (:color (meta p))]
+      (apply q/fill color)
       (q/ellipse x y (* 2 r) (* 2 r))
       ;;(q/ellipse x y r r)
       )))
