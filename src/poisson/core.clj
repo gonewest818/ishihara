@@ -10,11 +10,17 @@
   {:kdtree (k/build-tree [])
    :building true
    :max-tries 10000
-   :cmin 64
-   :cmax 255
+   :color-generator :cosine
+   :cmin 0.0
+   :cmax 1.0
+   :a [0.5 0.5 0.5]
+   :b [0.5 0.5 0.5]
+   :c [1.0 1.0 0.5]
+   :d [0.8 0.9 0.3]
    :smin 2
-   :slim 50
-   :smax 50
+   :slim 52
+   :smax 52
+   :sdec 5
    :offscreen false})
 
 (defn setup-offscreen
@@ -62,27 +68,43 @@
 (defn random-color
   "Generate a random rgb triple whose channel values lie in the interval
   from :cmin to :cmax"
-  [{:keys [cmin cmax]}]
+  [cmin cmax]
   [(q/random cmin cmax)
    (q/random cmin cmax)
    (q/random cmin cmax)])
 
+(defn cosine-gradient-color
+  "Cosine-based gradient generator as defined in
+  http://www.iquilezles.org/www/articles/palettes/palettes.htm"
+  [vec-a vec-b vec-c vec-d t]
+  (map (fn [a b c d]
+         (q/constrain (* 255.0 (+ a (* b (q/cos (* 2.0 q/PI (+ (* c t) d))))))
+                      0.0 255.0))
+       vec-a vec-b vec-c vec-d))
+
+(defn choose-color
+  "Choose a color with one of the available generators"
+  [{:keys [color-generator cmin cmax a b c d]}]
+  (case color-generator
+    :random (random-color cmin cmax)
+    :cosine (cosine-gradient-color a b c d (q/random cmin cmax))))
+
 (defn update-state
   "Update the state, mainly by generating a new disc in the display area
   that doesn't intersect any existing discs."
-  [{:keys [kdtree building smin slim smax max-tries], :as state}]
+  [{:keys [kdtree building smin slim smax sdec max-tries], :as state}]
   (if-not building
     state
     (loop [i 0]
-      (let [;disc (random-disc state)
-            disc (assoc (random-disc state) :r slim)
+      (let [disc (random-disc state)
+            ;disc (assoc (random-disc state) :r slim)
             radius (+ smax (:r disc))
             points (k/interval-search kdtree (make-interval disc radius))]
         (if (some (collision? disc) points)
           (if (< i max-tries)
             (recur (inc i))
-            (if (> slim smin)
-              (assoc state :slim (dec slim))
+            (if (> (- slim sdec) smin)
+              (assoc state :slim (- slim sdec))
               (assoc state :building false)))
           (assoc state :kdtree (k/insert kdtree
                                          (with-meta
@@ -104,8 +126,8 @@
 (defn draw-state
   "Draw all discs"
   [{:keys [kdtree building slim offscreen]}]
-  (q/background 24)
-  (q/stroke-weight 0)
+  (q/background 255)
+  (q/no-stroke)
   (doseq [p (k/interval-search kdtree [[0 (q/width)] [0 (q/height)]])]
     (let [[x y] p
           {:keys [r color]} (meta p)]
@@ -130,20 +152,20 @@
   (q/exit)
   (println "draw-offscreen: done"))
 
-(q/defsketch poisson                    ; offscreen pdf
+#_(q/defsketch poisson                    ; offscreen pdf
   :title "packed circles"
-  :size [1200 600]
+  :size [3000 3000]
   :setup setup-offscreen
   :settings settings
   :draw draw-offscreen
   :middleware [m/fun-mode])
 
-#_(q/defsketch poisson                    ; onscreen animation
+(q/defsketch poisson                    ; onscreen animation
   :title "packed circles"
   :size [1000 1000]
   :setup setup
   :settings settings
-  :update update-offscreen
+  :update update-state
   :draw draw-state
   :features [:keep-on-top]
   :middleware [m/fun-mode])
