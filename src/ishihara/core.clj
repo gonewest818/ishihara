@@ -1,4 +1,4 @@
-(ns poisson.core
+(ns ishihara.core
   (:require [kdtree :as k]
             [quil.core :as q]
             [quil.middleware :as m]))
@@ -30,7 +30,7 @@
                :smin            3
                :slim            100
                :smax            100
-               :sdec            5
+               :sdec            2
                :offscreen       false}
         disc  (random-disc state)
         color (choose-color state)]
@@ -238,15 +238,15 @@
 
 #_(q/defsketch poisson                    ; offscreen pdf
   :title "packed circles"
-  :size [1500 1500]
+  :size [2000 2000]
   :setup setup-offscreen
   :settings settings
   :draw draw-offscreen
   :middleware [m/fun-mode])
 
-(q/defsketch poisson                    ; onscreen animation
+#_(q/defsketch poisson                    ; onscreen animation
   :title "packed circles"
-  :size [500 500]
+  :size [1200 600]
   :setup setup
   :settings settings
   :update update-state
