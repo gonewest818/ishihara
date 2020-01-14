@@ -1,7 +1,9 @@
 (ns ishihara.core
   (:require [kdtree :as k]
             [quil.core :as q]
-            [quil.middleware :as m]))
+            [quil.middleware :as m]
+            [clj-async-profiler.core :as prof])
+  (:gen-class))
 
 (declare make-kd-entry)
 (declare make-sizes)
@@ -12,17 +14,11 @@
   "Provide the initial state map for this applet"
   []
   (q/frame-rate 15)
-  (let [state {;;:kdtree          (k/build-tree [disc])
-               ;;:points          (list disc)
-               :building        true
+  (let [state {:building        true
                :max-tries       1000
                :color-generator :cosine
                :cmin            0.0
                :cmax            1.0
-               ;; :a               [0.5 0.5 0.5]
-               ;; :b               [0.5 0.5 0.5]
-               ;; :c               [1.0 1.0 0.5]
-               ;; :d               [0.8 0.9 0.3]
                :a               [0.578 0.188 0.448]
                :b               [0.127 0.288 0.373]
                :c               [1.918 0.677 0.529]
@@ -103,11 +99,7 @@
     (or (< x (- r))
         (> x (+ w r))
         (< y (- r))
-        (> y (+ h r)))
-    #_(or (< x 100)
-        (> x 400)
-        (< y 100)
-        (> y 400))))
+        (> y (+ h r)))))
 
 (defn make-interval
   "Make a square interval around the position of the supplied disc"
@@ -151,39 +143,30 @@
   [{:keys [kdtree points building smax max-tries], :as state}]
   (if-not building
     state
-    ;; TODO: to generate new discs, select an existing one and
+    ;; NOTE: to generate new discs, select an existing one and
     ;; generate a new random radius and then randomly sample new
     ;; locations where the new disc just touches the existing disc.
-    ;; If the selected location doesn't collide with anything else
-    ;; then use that location.  Keep trying until a max is reached.
-    ;; If max is reached then for this particular disc, set the
-    ;; max available radius to be smaller than the one we just tested
-    ;; and try again. If the max available radius is already the
-    ;; smallest radius we allow, then remove this disc from further
-    ;; consideration because all adjencies are full.
     (if (zero? (count points))          ; if no more discs can be generated
       (assoc state :building false)     ; toggle flag that we are done
       (let  [selected (rand-nth points)  ; else choose existing pt at random
              radius (rand-nth (:sizes selected)) ;(last (:sizes selected))
              dist     (+ radius (:r selected) 1.0) ; add an epsilon
              pad      (+ smax radius radius (:r selected) 1.0) ;add an epsilon
-             ;; todo: use kd-tree to search existing discs in a neighborhood/interval
-             ;; for now just search them all inefficiently
-             existing
-             (k/interval-search kdtree (make-interval selected pad))
-             ;;(k/interval-search kdtree [[##-Inf ##Inf] [##-Inf ##Inf]])
-             ]
+             existing (k/interval-search kdtree (make-interval selected pad))]
         (loop [i 0]
           (let [disc  (random-polar-disc (:x selected) (:y selected) dist radius state)
                 color (choose-color state)]
+            ;; If the selected location collides with another then
+            ;; make another random choice
             (if (or (offscreen? disc)
                     (some (collision? disc) existing))
-              (if (< i max-tries)       ; keep trying until limit is reached
+              (if (< i max-tries)
                 (recur (inc i))
-                ;; we're at the limit of tries, so filter the list of sizes
-                ;; (we're assuming a smaller disc might still fit here) and
-                ;; if no smaller sizes are available then remove this point
-                ;; from further consideration
+                ;; If max is reached then for this particular disc, set the
+                ;; max available radius to be smaller than the one we just tested
+                ;; and try again. If the max available radius is already the
+                ;; smallest radius we allow, then remove this disc from further
+                ;; consideration because all adjencies are full.
                 (let [new-sizes (filter #(< % radius) (:sizes selected))
                       new-selected (assoc selected :sizes new-sizes)
                       new-state (assoc state :points (remove #(= % selected) points))]
@@ -236,20 +219,30 @@
   (q/exit)
   (println "draw-offscreen: done"))
 
-#_(q/defsketch poisson                    ; offscreen pdf
-  :title "packed circles"
-  :size [2000 2000]
-  :setup setup-offscreen
-  :settings settings
-  :draw draw-offscreen
-  :middleware [m/fun-mode])
 
-#_(q/defsketch poisson                    ; onscreen animation
-  :title "packed circles"
-  :size [1200 600]
-  :setup setup
-  :settings settings
-  :update update-state
-  :draw draw-state
-  :features [:keep-on-top]
-  :middleware [m/fun-mode])
+(defn -main [& args]
+  (if (pos? (count args))               ; for now, any arg means offscreen
+                                        ; but in general we will want to
+                                        ; initialize random number seed,
+                                        ; set a filename for output,
+                                        ; maybe toggle profiling, etc.
+    (q/sketch
+     :title "ishihara diagram offscreen"
+     :size [2000 2000]
+     :setup setup-offscreen
+     :settings settings
+     :draw draw-offscreen
+     :middleware [m/fun-mode])
+    (q/sketch
+     :title "ishihara diagram"
+     :size [1200 600]
+     :setup setup
+     :settings settings
+     :update update-state
+     :draw draw-state
+     :features [:keep-on-top :exit-on-close]
+     :middleware [m/fun-mode])))
+
+;; manual profiling
+;; (prof/start)
+;; (prof/stop)
