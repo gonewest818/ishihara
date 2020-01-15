@@ -209,8 +209,7 @@
   "Generate offscreen rendering context, then render, save, and exit"
   [state]
   (println "draw-offscreen: begin")
-  (let [gr (q/create-graphics (q/width) (q/height)
-                              :pdf "generated/create-graphics.pdf")]
+  (let [gr (q/current-graphics)]
     (q/with-graphics gr
       (-> state
           update-offscreen
@@ -228,11 +227,14 @@
                                         ; maybe toggle profiling, etc.
     (q/sketch
      :title "ishihara diagram offscreen"
-     :size [2000 2000]
+     :size [3000 3000]
+     :renderer :pdf
+     :output-file "generated/ishihara.pdf"
      :setup setup-offscreen
      :settings settings
      :draw draw-offscreen
      :middleware [m/fun-mode])
+
     (q/sketch
      :title "ishihara diagram"
      :size [1200 600]
