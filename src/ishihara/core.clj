@@ -24,12 +24,12 @@
                :c               [1.918 0.677 0.529]
                :d               [-0.112 -0.533 0.568]
                :smin            3
-               :slim            100
-               :smax            100
-               :sdec            2
+               :slim            20
+               :smax            20
+               :sdec            1
                :offscreen       false}
         disc  (random-disc state)
-        color (choose-color state)]
+        color (choose-color state (/ (:x disc) (q/width)))]
     (assoc state
            :kdtree (k/insert nil (make-kd-entry disc color))
            :points (list disc))))
@@ -50,18 +50,28 @@
   ;; for now just a list of steps spaced equally, but
   ;; could be augmented to something more interesting
   ;; like the golden ratio
-  [{:keys [smin smax sdec]}]            ; does this need the full state vector?
-  (range smin smax sdec))               ; todo: rename sdec
+  [{:keys [smin smax sdec]}             ; state
+   {:keys [x y]}]                       ; a disc
+  (let [mx (* 2.0 q/PI 0.005 x)
+        my (* 2.0 q/PI 0.005 y)
+        upper (q/constrain
+               (+ smin
+                  (* 0.25 (+ 2.0 (q/sin mx) (q/sin my))
+                     (- smax smin)))
+               smin smax)
+        lower (-> upper
+                  (- (* 0.3 (- smax smin)))
+                  (q/constrain smin smax))]
+    (range lower upper sdec)))
 
 (defn random-disc
   "Randomly generate a disc's position and radius.
   Return a map with keys :x :y :r and :sizes"
   [state]
-  (let [sizes (make-sizes state)]
-   {:x (int (q/random 0 (q/width)))
-    :y (int (q/random 0 (q/height)))
-    :r (rand-nth sizes)
-    :sizes sizes}))
+  (let [pt {:x (int (q/random 0 (q/width)))
+            :y (int (q/random 0 (q/height)))}
+        sizes (make-sizes state pt)]
+    (assoc pt :sizes sizes :r (rand-nth sizes))))
 
 (defn random-polar-disc
   "Randomly generate a disc's position given an origin and desired
@@ -72,7 +82,7 @@
     {:x (int (+ x (* dist (q/cos theta))))
      :y (int (+ y (* dist (q/sin theta))))
      :r (int r)
-     :sizes (make-sizes state)}))
+     :sizes (make-sizes state {:x x :y y})}))
 
 (defn sq-dist
   "Compute the squared distance from (x1,y1) to (x2,y2)"
@@ -133,10 +143,10 @@
 
 (defn choose-color
   "Choose a color with one of the available generators"
-  [{:keys [color-generator cmin cmax a b c d]}]
+  [{:keys [color-generator cmin cmax a b c d]} t]
   (case color-generator
     :random (random-color cmin cmax)
-    :cosine (cosine-gradient-color a b c d (q/random cmin cmax))))
+    :cosine (cosine-gradient-color a b c d t)))
 
 (defn update-state
   "Generate a new disc in the display area"
@@ -155,7 +165,7 @@
              existing (k/interval-search kdtree (make-interval selected pad))]
         (loop [i 0]
           (let [disc  (random-polar-disc (:x selected) (:y selected) dist radius state)
-                color (choose-color state)]
+                color (choose-color state (/ (:x selected) (q/width)))]
             ;; If the selected location collides with another then
             ;; make another random choice
             (if (or (offscreen? disc)
@@ -227,7 +237,7 @@
                                         ; maybe toggle profiling, etc.
     (q/sketch
      :title "ishihara diagram offscreen"
-     :size [3000 3000]
+     :size [2560 1600]
      :renderer :pdf
      :output-file "generated/ishihara.pdf"
      :setup setup-offscreen
@@ -237,12 +247,12 @@
 
     (q/sketch
      :title "ishihara diagram"
-     :size [1200 600]
+     :size [500 500]
      :setup setup
      :settings settings
      :update update-state
      :draw draw-state
-     :features [:keep-on-top :exit-on-close]
+     :features [:keep-on-top]
      :middleware [m/fun-mode])))
 
 ;; manual profiling
