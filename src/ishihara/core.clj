@@ -23,9 +23,9 @@
                :b               [0.127 0.288 0.373]
                :c               [1.918 0.677 0.529]
                :d               [-0.112 -0.533 0.568]
-               :smin            3
-               :slim            20
-               :smax            20
+               :smin            2
+               :slim            125
+               :smax            125
                :sdec            1
                :offscreen       false}
         disc  (random-disc state)
@@ -56,12 +56,12 @@
         my (* 2.0 q/PI 0.005 y)
         upper (q/constrain
                (+ smin
-                  (* 0.25 (+ 2.0 (q/sin mx) (q/sin my))
+                  (* (q/noise (* x 0.005) (* y 0.005))         ; sine waves 0.25 (+ 2.0 (q/sin mx) (q/sin my))
                      (- smax smin)))
                smin smax)
         lower (-> upper
                   (- (* 0.3 (- smax smin)))
-                  (q/constrain smin smax))]
+                  (q/constrain smin upper))]
     (range lower upper sdec)))
 
 (defn random-disc
@@ -165,7 +165,7 @@
              existing (k/interval-search kdtree (make-interval selected pad))]
         (loop [i 0]
           (let [disc  (random-polar-disc (:x selected) (:y selected) dist radius state)
-                color (choose-color state (/ (:x selected) (q/width)))]
+                color (choose-color state (* 1.5 (/ (:r disc) smax)))]
             ;; If the selected location collides with another then
             ;; make another random choice
             (if (or (offscreen? disc)
@@ -208,11 +208,14 @@
   (doseq [p (k/interval-search kdtree [[##-Inf ##Inf] [##-Inf ##Inf]])]
     (let [[x y] p
           {:keys [r color]} (meta p)]
+      ;; (apply q/fill (conj (vec color) 1))
+      ;; (q/ellipse x y (* 2 smax) (* 2 smax))
       (apply q/fill color)
-      (q/ellipse x y (* 2 r) (* 2 r))))
+      (q/ellipse x y (* 2 r) (* 2 r))
+      ))
   (if (and building (not offscreen))
     (do
-      (q/fill 255 255 255)
+      (q/fill 0)
       (q/text (format "building %s points %s" (:building state) (count (:points state))) 20 20))))
 
 (defn draw-offscreen
