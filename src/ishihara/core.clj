@@ -13,7 +13,7 @@
 
 (defn make-setup
   "Provide the initial state map for this applet"
-  [seed offscreen]
+  [rmin rmax rincr seed offscreen]
   (fn []
     (q/random-seed seed)
     (q/noise-seed seed)
@@ -23,14 +23,25 @@
                  :color-generator :cosine
                  :cmin            0.0
                  :cmax            1.0
-                 :a               [0.578 0.188 0.448]
-                 :b               [0.127 0.288 0.373]
-                 :c               [1.918 0.677 0.529]
-                 :d               [-0.112 -0.533 0.568]
-                 :smin            2
-                 :slim            125
-                 :smax            125
-                 :sdec            1
+                 ;; :a               [ 0.578  0.188  0.448]
+                 ;; :b               [ 0.127  0.288  0.373]
+                 ;; :c               [ 1.918  0.677  0.529]
+                 ;; :d               [-0.112 -0.533  0.568]
+                 :a [(+ 0.5 (/ (q/random-gaussian) 5.0))
+                     (+ 0.5 (/ (q/random-gaussian) 5.0))
+                     (+ 0.5 (/ (q/random-gaussian) 5.0))]
+                 :b [(+ 0.5 (/ (q/random-gaussian) 2.0))
+                     (+ 0.5 (/ (q/random-gaussian) 2.0))
+                     (+ 0.5 (/ (q/random-gaussian) 2.0))]
+                 :c [(+ 0.5 (/ (q/random-gaussian) 6.0))
+                     (+ 0.5 (/ (q/random-gaussian) 6.0))
+                     (+ 0.5 (/ (q/random-gaussian) 6.0))]
+                 :d [(/ (q/random-gaussian) 6.0)
+                     (/ (q/random-gaussian) 6.0)
+                     (/ (q/random-gaussian) 6.0)]
+                 :rmin            rmin
+                 :rmax            rmax
+                 :rincr           rincr
                  :offscreen       offscreen
                  :seed            seed}
           disc  (random-disc state)
@@ -49,19 +60,19 @@
   ;; for now just a list of steps spaced equally, but
   ;; could be augmented to something more interesting
   ;; like the golden ratio
-  [{:keys [smin smax sdec]}             ; state
+  [{:keys [rmin rmax rincr]}            ; state
    {:keys [x y]}]                       ; a disc
   (let [mx (* 2.0 q/PI 0.005 x)
         my (* 2.0 q/PI 0.005 y)
         upper (q/constrain
-               (+ smin
+               (+ rmin
                   (* (q/noise (* x 0.005) (* y 0.005))         ; sine waves 0.25 (+ 2.0 (q/sin mx) (q/sin my))
-                     (- smax smin)))
-               smin smax)
+                     (- rmax rmin)))
+               rmin rmax)
         lower (-> upper
-                  (- (* 0.3 (- smax smin)))
-                  (q/constrain smin upper))]
-    (range lower upper sdec)))
+                  (- (* 0.3 (- rmax rmin)))
+                  (q/constrain rmin upper))]
+    (range lower upper rincr)))
 
 (defn random-disc
   "Randomly generate a disc's position and radius.
@@ -149,7 +160,7 @@
 
 (defn update-state
   "Generate a new disc in the display area"
-  [{:keys [kdtree points building smax max-tries], :as state}]
+  [{:keys [kdtree points building rmax max-tries], :as state}]
   (if-not building
     state
     ;; NOTE: to generate new discs, select an existing one and
@@ -160,11 +171,11 @@
       (let  [selected (nth points (q/random (count points)))  ; else choose existing pt at random
              radius   (nth (:sizes selected) (q/random (count (:sizes selected))))
              dist     (+ radius (:r selected) 1.0) ; add an epsilon
-             pad      (+ smax radius radius (:r selected) 1.0) ;add an epsilon
+             pad      (+ rmax radius radius (:r selected) 1.0) ;add an epsilon
              existing (k/interval-search kdtree (make-interval selected pad))]
         (loop [i 0]
           (let [disc  (random-polar-disc (:x selected) (:y selected) dist radius state)
-                color (choose-color state (* 1.5 (/ (:r disc) smax)))]
+                color (choose-color state (* 1.5 (/ (:r disc) rmax)))]
             ;; If the selected location collides with another then
             ;; make another random choice
             (if (or (offscreen? disc)
@@ -200,7 +211,7 @@
 
 (defn draw-state
   "Draw all discs"
-  [{:keys [kdtree building slim smax offscreen], :as state}]
+  [{:keys [kdtree building rmax offscreen], :as state}]
   (q/background 25)
   (q/no-stroke)
   ;; shouldn't there be a way to iterate the whole tree? is this slow?
@@ -208,7 +219,7 @@
     (let [[x y] p
           {:keys [r color]} (meta p)]
       ;; (apply q/fill (conj (vec color) 1))
-      ;; (q/ellipse x y (* 2 smax) (* 2 smax))
+      ;; (q/ellipse x y (* 2 rmax) (* 2 rmax))
       (apply q/fill color)
       (q/ellipse x y (* 2 r) (* 2 r))
       ))
@@ -246,6 +257,18 @@
     :default 500
     :parse-fn #(Integer/parseInt %)
     :validate [#(< 0 % 65536) "Must be between 1 and 65535"]]
+   ["-l" "--rmin RMIN" "Minimum radius"
+    :default 2
+    :parse-fn #(Integer/parseInt %)
+    :validate [#(< 0 % 65536) "Must be between 1 and 65535"]]
+   ["-u" "--rmax RMAX" "Maximum radius"
+    :default 125
+    :parse-fn #(Integer/parseInt %)
+    :validate [#(< 0 % 65536) "Must be between 1 and 65535"]]
+   ["-i" "--rincr RINCR" "Increments between each radius"
+    :default 1
+    :parse-fn #(Integer/parseInt %)
+    :validate [#(< 0 % 65536) "Must be between 1 and 65535"]]
    ["-o" "--output FILENAME" "Filename to write (pdf renderer only)"
     :default "generated/ishihara-%DATE%-%SEED%.pdf"]
    ["-s" "--seed VALUE" "Random number seed (System/currentTimeMillis)"
@@ -265,7 +288,7 @@
       (cli-usage summary)
       (System/exit 0))
     ;; else go ahead and run
-    (let [{:keys [width height render output seed]} options
+    (let [{:keys [width height render rmin rmax rincr output seed]} options
           date (.. java.time.LocalDate now toString)
           file (-> output
                    (clojure.string/replace #"%SEED%" (str seed))
@@ -276,14 +299,14 @@
                   :size [width height]
                   :renderer :pdf
                   :output-file file
-                  :setup (make-setup seed true)
+                  :setup (make-setup rmin rmax rincr seed true)
                   :settings settings
                   :draw draw-offscreen
                   :middleware [m/fun-mode])
         "java2d" (q/sketch
                   :title "ishihara diagram"
                   :size [width height]
-                  :setup (make-setup seed false)
+                  :setup (make-setup rmin rmax rincr seed false)
                   :settings settings
                   :update update-state
                   :draw draw-state
