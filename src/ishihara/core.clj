@@ -15,7 +15,9 @@
   "Provide the initial state map for this applet"
   [seed offscreen]
   (fn []
-    (q/frame-rate 15)
+    (q/random-seed seed)
+    (q/noise-seed seed)
+    (q/frame-rate 60)
     (let [state {:building        true
                  :max-tries       1000
                  :color-generator :cosine
@@ -31,7 +33,6 @@
                  :sdec            1
                  :offscreen       offscreen
                  :seed            seed}
-          _     (q/random-seed seed)
           disc  (random-disc state)
           color (choose-color state (/ (:x disc) (q/width)))]
       (assoc state
@@ -41,7 +42,6 @@
 (defn settings
   "Processing documentation insists this must be done here"
   []
-  (q/pixel-density 2)
   (q/smooth 16))
 
 (defn make-sizes
@@ -70,7 +70,7 @@
   (let [pt {:x (int (q/random 0 (q/width)))
             :y (int (q/random 0 (q/height)))}
         sizes (make-sizes state pt)]
-    (assoc pt :sizes sizes :r (rand-nth sizes))))
+    (assoc pt :sizes sizes :r (nth sizes (q/random (count sizes))))))
 
 (defn random-polar-disc
   "Randomly generate a disc's position given an origin and desired
@@ -157,8 +157,8 @@
     ;; locations where the new disc just touches the existing disc.
     (if (zero? (count points))          ; if no more discs can be generated
       (assoc state :building false)     ; toggle flag that we are done
-      (let  [selected (rand-nth points)  ; else choose existing pt at random
-             radius (rand-nth (:sizes selected)) ;(last (:sizes selected))
+      (let  [selected (nth points (q/random (count points)))  ; else choose existing pt at random
+             radius   (nth (:sizes selected) (q/random (count (:sizes selected))))
              dist     (+ radius (:r selected) 1.0) ; add an epsilon
              pad      (+ smax radius radius (:r selected) 1.0) ;add an epsilon
              existing (k/interval-search kdtree (make-interval selected pad))]
