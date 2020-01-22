@@ -2,6 +2,7 @@
   (:require [kdtree :as k]
             [quil.core :as q]
             [quil.middleware :as m]
+            [clojure.tools.cli :refer [parse-opts]]
             [clj-async-profiler.core :as prof])
   (:gen-class))
 
@@ -10,34 +11,32 @@
 (declare random-disc)
 (declare choose-color)
 
-(defn setup
+(defn make-setup
   "Provide the initial state map for this applet"
-  []
-  (q/frame-rate 15)
-  (let [state {:building        true
-               :max-tries       1000
-               :color-generator :cosine
-               :cmin            0.0
-               :cmax            1.0
-               :a               [0.578 0.188 0.448]
-               :b               [0.127 0.288 0.373]
-               :c               [1.918 0.677 0.529]
-               :d               [-0.112 -0.533 0.568]
-               :smin            2
-               :slim            125
-               :smax            125
-               :sdec            1
-               :offscreen       false}
-        disc  (random-disc state)
-        color (choose-color state (/ (:x disc) (q/width)))]
-    (assoc state
-           :kdtree (k/insert nil (make-kd-entry disc color))
-           :points (list disc))))
-
-(defn setup-offscreen
-  "Initial state vector with :offscreen flag set true"
-  []
-  (assoc (setup) :offscreen true))
+  [seed offscreen]
+  (fn []
+    (q/frame-rate 15)
+    (let [state {:building        true
+                 :max-tries       1000
+                 :color-generator :cosine
+                 :cmin            0.0
+                 :cmax            1.0
+                 :a               [0.578 0.188 0.448]
+                 :b               [0.127 0.288 0.373]
+                 :c               [1.918 0.677 0.529]
+                 :d               [-0.112 -0.533 0.568]
+                 :smin            2
+                 :slim            125
+                 :smax            125
+                 :sdec            1
+                 :offscreen       offscreen
+                 :seed            seed}
+          _     (q/random-seed seed)
+          disc  (random-disc state)
+          color (choose-color state (/ (:x disc) (q/width)))]
+      (assoc state
+             :kdtree (k/insert nil (make-kd-entry disc color))
+             :points (list disc)))))
 
 (defn settings
   "Processing documentation insists this must be done here"
@@ -231,32 +230,65 @@
   (q/exit)
   (println "draw-offscreen: done"))
 
+(defn cli-usage
+  [summary]
+  (println "Options:\n" summary))
+
+(def cli-options
+  [["-r" "--render RENDERER" "Choose between java2d or pdf"
+    :default "java2d"
+    :validate [#{"java2d" "pdf"} "Renderer must be java2d or pdf"]]
+   ["-x" "--width X" "Width of output image"
+    :default 500
+    :parse-fn #(Integer/parseInt %)
+    :validate [#(< 0 % 65536) "Must be between 1 and 65535"]]
+   ["-y" "--height Y" "Height of output image"
+    :default 500
+    :parse-fn #(Integer/parseInt %)
+    :validate [#(< 0 % 65536) "Must be between 1 and 65535"]]
+   ["-o" "--output FILENAME" "Filename to write (pdf renderer only)"
+    :default "generated/ishihara-%DATE%-%SEED%.pdf"]
+   ["-s" "--seed VALUE" "Random number seed (System/currentTimeMillis)"
+    :default (System/currentTimeMillis)
+    :parse-fn #(Long/parseLong %)
+    :validate [#(<= Long/MIN_VALUE % Long/MAX_VALUE) "Seed must be a valid long int"]]
+   ["-h" "--help"]])
 
 (defn -main [& args]
-  (if (pos? (count args))               ; for now, any arg means offscreen
-                                        ; but in general we will want to
-                                        ; initialize random number seed,
-                                        ; set a filename for output,
-                                        ; maybe toggle profiling, etc.
-    (q/sketch
-     :title "ishihara diagram offscreen"
-     :size [2560 1600]
-     :renderer :pdf
-     :output-file "generated/ishihara.pdf"
-     :setup setup-offscreen
-     :settings settings
-     :draw draw-offscreen
-     :middleware [m/fun-mode])
-
-    (q/sketch
-     :title "ishihara diagram"
-     :size [500 500]
-     :setup setup
-     :settings settings
-     :update update-state
-     :draw draw-state
-     :features [:keep-on-top]
-     :middleware [m/fun-mode])))
+  (let [{:keys [options errors summary]} (parse-opts args cli-options)]
+    ;; handle exceptions
+    (when errors
+      (println (String/join "\n" errors) "\n")
+      (cli-usage summary)
+      (System/exit -1))
+    (when (:help options)
+      (cli-usage summary)
+      (System/exit 0))
+    ;; else go ahead and run
+    (let [{:keys [width height render output seed]} options
+          date (.. java.time.LocalDate now toString)
+          file (-> output
+                   (clojure.string/replace #"%SEED%" (str seed))
+                   (clojure.string/replace #"%DATE%" date))]
+      (case render
+        "pdf"    (q/sketch
+                  :title "ishihara diagram offscreen"
+                  :size [width height]
+                  :renderer :pdf
+                  :output-file file
+                  :setup (make-setup seed true)
+                  :settings settings
+                  :draw draw-offscreen
+                  :middleware [m/fun-mode])
+        "java2d" (q/sketch
+                  :title "ishihara diagram"
+                  :size [width height]
+                  :setup (make-setup seed false)
+                  :settings settings
+                  :update update-state
+                  :draw draw-state
+                  :features [:keep-on-top]
+                  :middleware [m/fun-mode])))))
 
 ;; manual profiling
 ;; (prof/start)
