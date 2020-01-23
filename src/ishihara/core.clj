@@ -2,6 +2,7 @@
   (:require [kdtree :as k]
             [quil.core :as q]
             [quil.middleware :as m]
+            [clojure.string]
             [clojure.tools.cli :refer [parse-opts]]
             [clj-async-profiler.core :as prof])
   (:gen-class))
@@ -173,7 +174,7 @@
       ))
   (if (and building (not offscreen))
     (do
-      (q/fill 0)
+      (q/fill 128)
       (q/text (format "building %s points %s" (:building state) (count (:points state))) 20 20))))
 
 (defn draw-offscreen
@@ -227,11 +228,11 @@
                  :rvar            rvar
                  :epsilon         epsilon
                  :noisedx         (if (pos? noisedx)
-                                    noisedx
-                                    (+ 0.01 (* 0.001 (q/random-gaussian))))
+                                    (/ 1.0 noisedx)
+                                    (* 0.005 (+ 2.0 (q/random-gaussian))))
                  :noisedy         (if (pos? noisedy)
-                                    noisedy
-                                    (+ 0.01 (* 0.001 (q/random-gaussian))))
+                                    (/ 1.0 noisedy)
+                                    (* 0.005 (+ 2.0 (q/random-gaussian))))
                  :offscreen       (= render "pdf")
                  :seed            seed}
           disc  (random-disc state)
@@ -285,11 +286,11 @@
     :parse-fn #(Integer/parseInt %)
     :validate [#(< 0 % 65536) "Must be between 1 and 65535"]]
 
-   ["-p" "--noisedx NDX" "Scale Perlin noise in X (0 means random)"
-    :default 0.0
+   ["-p" "--noisedx NDX" "Scale of Perlin noise in X (0 means random)"
+    :default 200.0
     :parse-fn #(Float/parseFloat %)]
-   ["-q" "--noisedy NDY" "Scale Perlin noise in Y (0 means random)"
-    :default 0.0
+   ["-q" "--noisedy NDY" "Scale of Perlin noise in Y (0 means random)"
+    :default 200.0
     :parse-fn #(Float/parseFloat %)]
 
    ["-o" "--output FILENAME" "Filename to write (pdf renderer only)"
