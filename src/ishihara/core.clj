@@ -6,71 +6,18 @@
             [clj-async-profiler.core :as prof])
   (:gen-class))
 
-(declare make-kd-entry)
-(declare make-sizes)
-(declare random-disc)
-(declare choose-color)
-
-(defn make-setup
-  "Provide the initial state map for this applet"
-  [rmin rmax rincr seed offscreen]
-  (fn []
-    (q/random-seed seed)
-    (q/noise-seed seed)
-    (q/frame-rate 60)
-    (let [state {:building        true
-                 :max-tries       1000
-                 :color-generator :cosine
-                 :cmin            0.0
-                 :cmax            1.0
-                 ;; :a               [ 0.578  0.188  0.448]
-                 ;; :b               [ 0.127  0.288  0.373]
-                 ;; :c               [ 1.918  0.677  0.529]
-                 ;; :d               [-0.112 -0.533  0.568]
-                 :a [(+ 0.5 (/ (q/random-gaussian) 5.0))
-                     (+ 0.5 (/ (q/random-gaussian) 5.0))
-                     (+ 0.5 (/ (q/random-gaussian) 5.0))]
-                 :b [(+ 0.5 (/ (q/random-gaussian) 2.0))
-                     (+ 0.5 (/ (q/random-gaussian) 2.0))
-                     (+ 0.5 (/ (q/random-gaussian) 2.0))]
-                 :c [(+ 0.5 (/ (q/random-gaussian) 6.0))
-                     (+ 0.5 (/ (q/random-gaussian) 6.0))
-                     (+ 0.5 (/ (q/random-gaussian) 6.0))]
-                 :d [(/ (q/random-gaussian) 6.0)
-                     (/ (q/random-gaussian) 6.0)
-                     (/ (q/random-gaussian) 6.0)]
-                 :rmin            rmin
-                 :rmax            rmax
-                 :rincr           rincr
-                 :offscreen       offscreen
-                 :seed            seed}
-          disc  (random-disc state)
-          color (choose-color state (/ (:x disc) (q/width)))]
-      (assoc state
-             :kdtree (k/insert nil (make-kd-entry disc color))
-             :points (list disc)))))
-
-(defn settings
-  "Processing documentation insists this must be done here"
-  []
-  (q/smooth 16))
-
 (defn make-sizes
   "Make a list of possible sizes for new discs"
   ;; for now just a list of steps spaced equally, but
   ;; could be augmented to something more interesting
   ;; like the golden ratio
-  [{:keys [rmin rmax rincr]}            ; state
-   {:keys [x y]}]                       ; a disc
-  (let [mx (* 2.0 q/PI 0.005 x)
-        my (* 2.0 q/PI 0.005 y)
-        upper (q/constrain
-               (+ rmin
-                  (* (q/noise (* x 0.005) (* y 0.005))         ; sine waves 0.25 (+ 2.0 (q/sin mx) (q/sin my))
-                     (- rmax rmin)))
-               rmin rmax)
-        lower (-> upper
-                  (- (* 0.3 (- rmax rmin)))
+  [{:keys [rmin rmax rincr rvar noisedx noisedy]} ; state
+   {:keys [x y]}]                                       ; disc
+  (let [upper (-> (+ rmin
+                     (* (q/noise (* x noisedx) (* y noisedy))
+                        (- rmax rmin)))
+                  (q/constrain rmin rmax))
+        lower (-> (* upper rvar)
                   (q/constrain rmin upper))]
     (range lower upper rincr)))
 
@@ -153,14 +100,15 @@
 
 (defn choose-color
   "Choose a color with one of the available generators"
-  [{:keys [color-generator cmin cmax a b c d]} t]
+  [{:keys [color-generator cmin cmax a b c d rmax]}  ; state
+   {:keys [r]}]                                      ; disc
   (case color-generator
     :random (random-color cmin cmax)
-    :cosine (cosine-gradient-color a b c d t)))
+    :cosine (cosine-gradient-color a b c d (* 1.5 (/ r rmax)))))
 
 (defn update-state
   "Generate a new disc in the display area"
-  [{:keys [kdtree points building rmax max-tries], :as state}]
+  [{:keys [kdtree points building rmax max-tries epsilon], :as state}]
   (if-not building
     state
     ;; NOTE: to generate new discs, select an existing one and
@@ -170,12 +118,12 @@
       (assoc state :building false)     ; toggle flag that we are done
       (let  [selected (nth points (q/random (count points)))  ; else choose existing pt at random
              radius   (nth (:sizes selected) (q/random (count (:sizes selected))))
-             dist     (+ radius (:r selected) 1.0) ; add an epsilon
-             pad      (+ rmax radius radius (:r selected) 1.0) ;add an epsilon
+             dist     (+ radius (:r selected) epsilon)
+             pad      (+ rmax radius radius (:r selected) epsilon)
              existing (k/interval-search kdtree (make-interval selected pad))]
         (loop [i 0]
           (let [disc  (random-polar-disc (:x selected) (:y selected) dist radius state)
-                color (choose-color state (* 1.5 (/ (:r disc) rmax)))]
+                color (choose-color state disc)]
             ;; If the selected location collides with another then
             ;; make another random choice
             (if (or (offscreen? disc)
@@ -241,6 +189,63 @@
   (q/exit)
   (println "draw-offscreen: done"))
 
+(defn make-setup
+  "Provide the initial state map for this applet"
+  [{:keys [render
+           rmin rmax rincr rvar
+           noisedx noisedy
+           epsilon
+           seed]}]
+  (fn []
+    (q/random-seed seed)
+    (q/noise-seed seed)
+    (q/frame-rate 60)
+    (let [state {:building        true
+                 :max-tries       1000
+                 :color-generator :cosine
+                 :cmin            0.0
+                 :cmax            1.0
+                 ;; :a               [ 0.578  0.188  0.448]
+                 ;; :b               [ 0.127  0.288  0.373]
+                 ;; :c               [ 1.918  0.677  0.529]
+                 ;; :d               [-0.112 -0.533  0.568]
+                 :a [(+ 0.5 (/ (q/random-gaussian) 5.0))
+                     (+ 0.5 (/ (q/random-gaussian) 5.0))
+                     (+ 0.5 (/ (q/random-gaussian) 5.0))]
+                 :b [(+ 0.5 (/ (q/random-gaussian) 2.0))
+                     (+ 0.5 (/ (q/random-gaussian) 2.0))
+                     (+ 0.5 (/ (q/random-gaussian) 2.0))]
+                 :c [(+ 0.5 (/ (q/random-gaussian) 6.0))
+                     (+ 0.5 (/ (q/random-gaussian) 6.0))
+                     (+ 0.5 (/ (q/random-gaussian) 6.0))]
+                 :d [(/ (q/random-gaussian) 6.0)
+                     (/ (q/random-gaussian) 6.0)
+                     (/ (q/random-gaussian) 6.0)]
+                 :rmin            rmin
+                 :rmax            rmax
+                 :rincr           rincr
+                 :rvar            rvar
+                 :epsilon         epsilon
+                 :noisedx         (if (pos? noisedx)
+                                    noisedx
+                                    (+ 0.01 (* 0.001 (q/random-gaussian))))
+                 :noisedy         (if (pos? noisedy)
+                                    noisedy
+                                    (+ 0.01 (* 0.001 (q/random-gaussian))))
+                 :offscreen       (= render "pdf")
+                 :seed            seed}
+          disc  (random-disc state)
+          color (choose-color state disc)]
+      (assoc state
+             :kdtree (k/insert nil (make-kd-entry disc color))
+             :points (list disc)))))
+
+(defn settings
+  "Processing documentation insists this must be done here"
+  []
+  (q/pixel-density (q/display-density))
+  (q/smooth 16))
+
 (defn cli-usage
   [summary]
   (println "Options:\n" summary))
@@ -249,6 +254,7 @@
   [["-r" "--render RENDERER" "Choose between java2d or pdf"
     :default "java2d"
     :validate [#{"java2d" "pdf"} "Renderer must be java2d or pdf"]]
+
    ["-x" "--width X" "Width of output image"
     :default 500
     :parse-fn #(Integer/parseInt %)
@@ -257,6 +263,7 @@
     :default 500
     :parse-fn #(Integer/parseInt %)
     :validate [#(< 0 % 65536) "Must be between 1 and 65535"]]
+
    ["-l" "--rmin RMIN" "Minimum radius"
     :default 2
     :parse-fn #(Integer/parseInt %)
@@ -269,6 +276,22 @@
     :default 1
     :parse-fn #(Integer/parseInt %)
     :validate [#(< 0 % 65536) "Must be between 1 and 65535"]]
+   ["-v" "--rvar RVAR" "Variance of any given disc radius"
+    :default 0.75
+    :parse-fn #(Float/parseFloat %)
+    :validate [#(pos? %) "Must be a positive value"]]
+   ["-e" "--epsilon EPSILON" "Spacing between discs"
+    :default 1
+    :parse-fn #(Integer/parseInt %)
+    :validate [#(< 0 % 65536) "Must be between 1 and 65535"]]
+
+   ["-p" "--noisedx NDX" "Scale Perlin noise in X (0 means random)"
+    :default 0.0
+    :parse-fn #(Float/parseFloat %)]
+   ["-q" "--noisedy NDY" "Scale Perlin noise in Y (0 means random)"
+    :default 0.0
+    :parse-fn #(Float/parseFloat %)]
+
    ["-o" "--output FILENAME" "Filename to write (pdf renderer only)"
     :default "generated/ishihara-%DATE%-%SEED%.pdf"]
    ["-s" "--seed VALUE" "Random number seed (System/currentTimeMillis)"
@@ -288,7 +311,7 @@
       (cli-usage summary)
       (System/exit 0))
     ;; else go ahead and run
-    (let [{:keys [width height render rmin rmax rincr output seed]} options
+    (let [{:keys [width height render output seed]} options
           date (.. java.time.LocalDate now toString)
           file (-> output
                    (clojure.string/replace #"%SEED%" (str seed))
@@ -299,14 +322,14 @@
                   :size [width height]
                   :renderer :pdf
                   :output-file file
-                  :setup (make-setup rmin rmax rincr seed true)
+                  :setup (make-setup options)
                   :settings settings
                   :draw draw-offscreen
                   :middleware [m/fun-mode])
         "java2d" (q/sketch
                   :title "ishihara diagram"
                   :size [width height]
-                  :setup (make-setup rmin rmax rincr seed false)
+                  :setup (make-setup options)
                   :settings settings
                   :update update-state
                   :draw draw-state
