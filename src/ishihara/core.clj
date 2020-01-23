@@ -12,7 +12,7 @@
   ;; could be augmented to something more interesting
   ;; like the golden ratio
   [{:keys [rmin rmax rincr rvar noisedx noisedy]} ; state
-   {:keys [x y]}]                                       ; disc
+   {:keys [x y]}]                                 ; disc
   (let [upper (-> (+ rmin
                      (* (q/noise (* x noisedx) (* y noisedy))
                         (- rmax rmin)))
@@ -199,7 +199,7 @@
   (fn []
     (q/random-seed seed)
     (q/noise-seed seed)
-    (q/frame-rate 60)
+    (q/frame-rate 120)
     (let [state {:building        true
                  :max-tries       1000
                  :color-generator :cosine
@@ -248,7 +248,7 @@
 
 (defn cli-usage
   [summary]
-  (println "Options:\n" summary))
+  (println (str "Options:\n" summary)))
 
 (def cli-options
   [["-r" "--render RENDERER" "Choose between java2d or pdf"
