@@ -7,40 +7,64 @@
             [clj-async-profiler.core :as prof])
   (:gen-class))
 
+(defn perlin-field
+  "Evaluate Perlin noise at a 2D point. Return the value
+  as well as the local gradient."
+  [x y noisedx noisedy]
+  (let [x0 (* x noisedx)
+        y0 (* y noisedy)
+        x1 (* (+ x 1) noisedx)
+        y1 (* (+ y 1) noisedy)
+        v00 (q/noise x0 y0)
+        v10 (q/noise x1 y0)
+        v01 (q/noise x0 y1)]
+    {:value v00
+     :dvdx (- v10 v00)
+     :dvdy (- v01 v00)}))
+
 (defn make-sizes
   "Make a list of possible sizes for new discs"
   ;; for now just a list of steps spaced equally, but
   ;; could be augmented to something more interesting
   ;; like the golden ratio
-  [{:keys [rmin rmax rincr rvar noisedx noisedy]} ; state
-   {:keys [x y]}]                                 ; disc
-  (let [upper (-> (+ rmin
-                     (* (q/noise (* x noisedx) (* y noisedy))
-                        (- rmax rmin)))
+  [{:keys [rmin rmax rincr rvar]} noise]
+  (let [upper (-> (+ rmin (* noise (- rmax rmin)))
                   (q/constrain rmin rmax))
         lower (-> (* upper rvar)
                   (q/constrain rmin upper))]
-    (range lower upper rincr)))
+    (if (< lower upper)
+      (range lower upper rincr)
+      (list lower))))                   ; avoid empty list
 
 (defn random-disc
   "Randomly generate a disc's position and radius.
   Return a map with keys :x :y :r and :sizes"
   [state]
-  (let [pt {:x (int (q/random 0 (q/width)))
-            :y (int (q/random 0 (q/height)))}
-        sizes (make-sizes state pt)]
-    (assoc pt :sizes sizes :r (nth sizes (q/random (count sizes))))))
+  (let [x (int (q/random 0 (q/width)))
+        y (int (q/random 0 (q/height)))
+        perlin (perlin-field x y (:noisedx state) (:noisedy state))
+        sizes (make-sizes state (:value perlin))
+        r (nth sizes (q/random (count sizes)))]
+    {:x x
+     :y y
+     :r r
+     :dx (:dvdx perlin)
+     :dy (:dvdy perlin)
+     :sizes sizes}))
 
 (defn random-polar-disc
   "Randomly generate a disc's position given an origin and desired
   distance from that origin, as well as the new disc's radius. Return
   a map with keys :x :y :r and :sizes"
   [x y dist r state]
-  (let [theta (q/random 0 (* 2.0 q/PI))]
+  (let [theta (q/random 0 (* 2.0 q/PI))
+        perlin (perlin-field x y (:noisedx state) (:noisedy state))]
     {:x (int (+ x (* dist (q/cos theta))))
      :y (int (+ y (* dist (q/sin theta))))
      :r (int r)
-     :sizes (make-sizes state {:x x :y y})}))
+     :dx (:dvdx perlin)
+     :dy (:dvdy perlin)
+     :sizes (make-sizes state (:value perlin))}))
 
 (defn sq-dist
   "Compute the squared distance from (x1,y1) to (x2,y2)"
@@ -80,6 +104,8 @@
   (with-meta
     [(:x disc) (:y disc)]               ; 2 element vector
     {:r (:r disc)
+     :dx (:dx disc)
+     :dy (:dy disc)
      :color color}))
 
 (defn random-color
@@ -95,8 +121,9 @@
   http://www.iquilezles.org/www/articles/palettes/palettes.htm"
   [vec-a vec-b vec-c vec-d t]
   (map (fn [a b c d]
-         (q/constrain (* 255.0 (+ a (* b (q/cos (* 2.0 q/PI (+ (* c t) d))))))
-                      0.0 255.0))
+         (-> (+ a (* b (q/cos (* 2.0 q/PI (+ (* c t) d)))))
+             (* 255.0)
+             (q/constrain 0.0 255.0)))
        vec-a vec-b vec-c vec-d))
 
 (defn choose-color
@@ -125,8 +152,8 @@
         (loop [i 0]
           (let [disc  (random-polar-disc (:x selected) (:y selected) dist radius state)
                 color (choose-color state disc)]
-            ;; If the selected location collides with another then
-            ;; make another random choice
+            ;; If the selected location collides with another or
+            ;; is offscreen then make another random choice
             (if (or (offscreen? disc)
                     (some (collision? disc) existing))
               (if (< i max-tries)
@@ -135,7 +162,7 @@
                 ;; max available radius to be smaller than the one we just tested
                 ;; and try again. If the max available radius is already the
                 ;; smallest radius we allow, then remove this disc from further
-                ;; consideration because all adjencies are full.
+                ;; consideration because the area is full.
                 (let [new-sizes (filter #(< % radius) (:sizes selected))
                       new-selected (assoc selected :sizes new-sizes)
                       new-state (assoc state :points (remove #(= % selected) points))]
@@ -166,11 +193,15 @@
   ;; shouldn't there be a way to iterate the whole tree? is this slow?
   (doseq [p (k/interval-search kdtree [[##-Inf ##Inf] [##-Inf ##Inf]])]
     (let [[x y] p
-          {:keys [r color]} (meta p)]
-      ;; (apply q/fill (conj (vec color) 1))
-      ;; (q/ellipse x y (* 2 rmax) (* 2 rmax))
+          {:keys [r color dx dy]} (meta p)]
+      ;;(apply q/fill (conj (vec color) (/ (* r 64) rmax)))
+      ;;(q/ellipse x y (* 2 rmax) (* 2 rmax))
       (apply q/fill color)
-      (q/ellipse x y (* 2 r) (* 2 r))
+      ;;(q/ellipse x y 1 1)
+      ;;(q/ellipse x y (* 2 r) (* 2 r))
+      (q/with-translation [x y]
+        (q/with-rotation [(q/atan2 dy dx)]
+          (q/ellipse 0 0 (* 2 r) r)))
       ))
   (if (and building (not offscreen))
     (do
