@@ -1,18 +1,18 @@
 # ishihara
 
-A Quil sketch designed to ... well, that part is up to you.
+![Ishihara Image](https://github.com/gonewest818/ishihara/raw/master/ishihara-e.png)
+
+A Quil sketch that began as an imitation of an Ishihara color
+blindness test pattern, and has now become something different.
 
 ## Usage
 
-LightTable - open `core.clj` and press `Ctrl+Shift+Enter` to evaluate the file.
-
-Emacs - run cider, open `core.clj` and press `C-c C-k` to evaluate the file.
-
-REPL - run `(require 'poisson.core)`.
+This project is set up to build an uberjar that runs from the command
+line. See the `run` script for examples.
 
 ## License
 
-Copyright © 2016 FIXME
+Copyright 2020  Neil Okamoto
 
-Distributed under the Eclipse Public License either version 1.0 or (at
+Distributed under the GNU Public License either version 1.0 or (at
 your option) any later version.
